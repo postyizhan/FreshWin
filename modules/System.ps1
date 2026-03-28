@@ -1,0 +1,157 @@
+﻿# System.ps1 - 系统功能设置
+
+function Enable-FileExtensions {
+    $current = Get-RegistryValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'HideFileExt'
+    if ($current -eq 0) {
+        Write-Status 'SKIP' '开启文件扩展名'
+    } else {
+        $r = Set-RegistryValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'HideFileExt' 0
+        if ($r -eq $true) { Write-Status 'OK' '开启文件扩展名' } else { Write-Status 'FAIL' "开启文件扩展名 — $r" }
+    }
+}
+
+function Enable-HiddenFiles {
+    $current = Get-RegistryValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'Hidden'
+    if ($current -eq 1) {
+        Write-Status 'SKIP' '显示隐藏文件'
+    } else {
+        $r = Set-RegistryValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'Hidden' 1
+        if ($r -eq $true) { Write-Status 'OK' '显示隐藏文件' } else { Write-Status 'FAIL' "显示隐藏文件 — $r" }
+    }
+}
+
+function Enable-WSL {
+    if (-not (Test-Admin)) {
+        Write-Status 'FAIL' '开启 WSL — 需要管理员权限'
+        return
+    }
+    $feature = Get-WindowsOptionalFeature -Online -FeatureName 'Microsoft-Windows-Subsystem-Linux' -ErrorAction SilentlyContinue
+    if ($feature -and $feature.State -eq 'Enabled') {
+        Write-Status 'SKIP' '开启 WSL'
+    } else {
+        Write-Host "  正在开启 WSL..." -ForegroundColor DarkGray
+        $r = Invoke-Cmd 'dism' @('/online', '/enable-feature', '/featurename:Microsoft-Windows-Subsystem-Linux', '/all', '/norestart')
+        if ($r.ExitCode -eq 0 -or $r.ExitCode -eq 3010) {
+            Write-Status 'OK' '开启 WSL（需重启生效）'
+        } else {
+            Write-Status 'FAIL' "开启 WSL — 退出码 $($r.ExitCode)"
+        }
+    }
+}
+
+function Enable-HyperV {
+    if (-not (Test-Admin)) {
+        Write-Status 'FAIL' '开启 Hyper-V — 需要管理员权限'
+        return
+    }
+    $feature = Get-WindowsOptionalFeature -Online -FeatureName 'Microsoft-Hyper-V' -ErrorAction SilentlyContinue
+    if ($feature -and $feature.State -eq 'Enabled') {
+        Write-Status 'SKIP' '开启 Hyper-V'
+    } else {
+        Write-Host "  正在开启 Hyper-V..." -ForegroundColor DarkGray
+        $r = Invoke-Cmd 'dism' @('/online', '/enable-feature', '/featurename:Microsoft-Hyper-V', '/all', '/norestart')
+        if ($r.ExitCode -eq 0 -or $r.ExitCode -eq 3010) {
+            Write-Status 'OK' '开启 Hyper-V（需重启生效）'
+        } else {
+            Write-Status 'FAIL' "开启 Hyper-V — 退出码 $($r.ExitCode)"
+        }
+    }
+}
+
+function Set-TimeFormat12H {
+    $current = Get-RegistryValue 'HKCU:\Control Panel\International' 'sTimeFormat'
+    $target = 'tt h:mm:ss'
+    if ($current -eq $target) {
+        Write-Status 'SKIP' '设置12小时制时间格式 (上午/下午 h:mm:ss)'
+    } else {
+        $r = Set-RegistryValue 'HKCU:\Control Panel\International' 'sTimeFormat' $target 'String'
+        if ($r -eq $true) { Write-Status 'OK' '设置12小时制时间格式 (上午/下午 h:mm:ss)' } else { Write-Status 'FAIL' "设置时间格式 — $r" }
+    }
+}
+
+function Set-PSExecutionPolicy {
+    $effective = Get-ExecutionPolicy
+    $userScope  = Get-ExecutionPolicy -Scope CurrentUser
+    # 有效策略已经够用（Bypass/Unrestricted/RemoteSigned），无需修改
+    if ($effective -in 'Bypass', 'Unrestricted', 'RemoteSigned') {
+        Write-Status 'SKIP' "PowerShell 执行策略（当前有效: $effective）"
+        return
+    }
+    try {
+        Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction Stop
+        Write-Status 'OK' 'PowerShell 执行策略设为 RemoteSigned'
+    } catch {
+        Write-Status 'FAIL' "PowerShell 执行策略 — $($_.Exception.Message)"
+    }
+}
+
+function Disable-MenuAnimation {
+    $current = Get-RegistryValue 'HKCU:\Control Panel\Desktop' 'MenuShowDelay'
+    if ($current -eq '0') {
+        Write-Status 'SKIP' '关闭右键菜单动画'
+    } else {
+        $r = Set-RegistryValue 'HKCU:\Control Panel\Desktop' 'MenuShowDelay' '0' 'String'
+        if ($r -eq $true) { Write-Status 'OK' '关闭右键菜单动画' } else { Write-Status 'FAIL' "关闭右键菜单动画 — $r" }
+    }
+}
+
+function Enable-LongPaths {
+    if (-not (Test-Admin)) {
+        Write-Status 'FAIL' '开启长路径支持 — 需要管理员权限'
+        return
+    }
+    $current = Get-RegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' 'LongPathsEnabled'
+    if ($current -eq 1) {
+        Write-Status 'SKIP' '开启长路径支持'
+    } else {
+        $r = Set-RegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' 'LongPathsEnabled' 1
+        if ($r -eq $true) { Write-Status 'OK' '开启长路径支持' } else { Write-Status 'FAIL' "开启长路径支持 — $r" }
+    }
+}
+
+function Disable-StartMenuRecommendations {
+    $current = Get-RegistryValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'Start_IrisRecommendations'
+    if ($current -eq 0) {
+        Write-Status 'SKIP' '关闭开始菜单推荐项目'
+    } else {
+        $r = Set-RegistryValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'Start_IrisRecommendations' 0
+        if ($r -eq $true) { Write-Status 'OK' '关闭开始菜单推荐项目' } else { Write-Status 'FAIL' "关闭开始菜单推荐项目 — $r" }
+    }
+}
+
+function Set-WindowsTerminalDefault {
+    $wtConsoleGuid = '{2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}'
+    $wtTerminalGuid = '{E12CFF52-A866-4C77-9A90-F570A7AA2C6B}'
+    $path = 'HKCU:\Console\%%Startup'
+    $currentConsole = Get-RegistryValue $path 'DelegationConsole'
+    $currentTerminal = Get-RegistryValue $path 'DelegationTerminal'
+    if ($currentConsole -eq $wtConsoleGuid -and $currentTerminal -eq $wtTerminalGuid) {
+        Write-Status 'SKIP' '配置 Windows Terminal 为默认终端'
+    } else {
+        $wt = Get-Command 'wt.exe' -ErrorAction SilentlyContinue
+        if (-not $wt) {
+            Write-Status 'FAIL' '配置 Windows Terminal 为默认终端 — 未检测到安装'
+            return
+        }
+        $r1 = Set-RegistryValue $path 'DelegationConsole' $wtConsoleGuid 'String'
+        $r2 = Set-RegistryValue $path 'DelegationTerminal' $wtTerminalGuid 'String'
+        if ($r1 -eq $true -and $r2 -eq $true) { Write-Status 'OK' '配置 Windows Terminal 为默认终端' } else { Write-Status 'FAIL' "配置 Windows Terminal — $r1 $r2" }
+    }
+}
+
+function Invoke-SystemAll {
+    Write-Host ""
+    Write-Host "  系统功能" -ForegroundColor Cyan
+    Write-Host "  ──────────────────────────────" -ForegroundColor DarkGray
+    Enable-FileExtensions
+    Enable-HiddenFiles
+    Enable-WSL
+    Enable-HyperV
+    Set-TimeFormat12H
+    Set-PSExecutionPolicy
+    Disable-MenuAnimation
+    Enable-LongPaths
+    Disable-StartMenuRecommendations
+    Set-WindowsTerminalDefault
+    Write-Host ""
+}
