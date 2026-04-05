@@ -44,58 +44,72 @@ function Set-BrowserDeveloperMode {
 }
 
 function Set-EdgeNewTabSimple {
-    if (-not (Test-Admin)) {
-        Write-Status 'FAIL' 'Edge 主页精简 — 需要管理员权限'
-        return
-    }
-    $policyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
-    $r1 = Set-RegistryValue $policyPath 'NewTabPageContentEnabled'         0
-    $r2 = Set-RegistryValue $policyPath 'NewTabPageQuickLinksEnabled'      0
-    $r3 = Set-RegistryValue $policyPath 'NewTabPageHideDefaultTopSites'    1
-    $r4 = Set-RegistryValue $policyPath 'NewTabPageAllowedBackgroundTypes' 3
-    if ($r1 -ne $true -or $r2 -ne $true -or $r3 -ne $true -or $r4 -ne $true) {
-        Write-Status 'FAIL' "Edge 主页精简 — $r1 $r2 $r3 $r4"
-        return
-    }
-
-    # 修改 Preferences JSON，先强制关闭 Edge
     $prefsPath = Get-BrowserPrefsPath 'msedge'
-    if (Test-Path $prefsPath) {
-        Stop-BrowserProcesses 'msedge' 'Edge'
-        try {
-            $prefs = Get-Content $prefsPath -Raw -Encoding UTF8 | ConvertFrom-Json
-            if (-not $prefs.ntp) { $prefs | Add-Member -NotePropertyName 'ntp' -NotePropertyValue ([PSCustomObject]@{}) }
-            $prefs.ntp | Add-Member -NotePropertyName 'show_content'     -NotePropertyValue $false -Force
-            $prefs.ntp | Add-Member -NotePropertyName 'show_quick_links' -NotePropertyValue $false -Force
-            $prefs.ntp | Add-Member -NotePropertyName 'show_cards'       -NotePropertyValue $false -Force
-            $prefs | ConvertTo-Json -Depth 100 | Set-Content $prefsPath -Encoding UTF8
-        } catch { <# 策略注册表已生效，JSON 失败不影响 #> }
+    if (-not (Test-Path $prefsPath)) {
+        Write-Status 'SKIP' 'Edge 主页精简 — 未检测到安装'
+        return
     }
-    Write-Status 'OK' 'Edge 主页精简（关闭信息流/快速链接/小组件/网站导航）'
+    Stop-BrowserProcesses 'msedge' 'Edge'
+    try {
+        $prefs = Get-Content $prefsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $already = $prefs.ntp.show_content -eq $false -and
+                   $prefs.ntp.show_quick_links -eq $false -and
+                   $prefs.ntp.show_cards -eq $false -and
+                   $prefs.ntp.background_image_type -eq 0
+        if ($already) {
+            Write-Status 'SKIP' 'Edge 主页精简'
+            return
+        }
+        if (-not $prefs.ntp) { $prefs | Add-Member -NotePropertyName 'ntp' -NotePropertyValue ([PSCustomObject]@{}) }
+        $prefs.ntp | Add-Member -NotePropertyName 'show_content'          -NotePropertyValue $false -Force
+        $prefs.ntp | Add-Member -NotePropertyName 'show_quick_links'      -NotePropertyValue $false -Force
+        $prefs.ntp | Add-Member -NotePropertyName 'show_cards'            -NotePropertyValue $false -Force
+        $prefs.ntp | Add-Member -NotePropertyName 'background_image_type' -NotePropertyValue 0      -Force  # 0=纯色, 1=自定义, 2=必应热点
+        $prefs | ConvertTo-Json -Depth 100 | Set-Content $prefsPath -Encoding UTF8
+        Write-Status 'OK' 'Edge 主页精简（关闭信息流/快速链接/小组件/必应热点）'
+    } catch {
+        Write-Status 'FAIL' "Edge 主页精简 — $($_.Exception.Message)"
+    }
 }
 
 function Disable-EdgeCopilotSidebar {
-    if (-not (Test-Admin)) {
-        Write-Status 'FAIL' 'Edge 隐藏 Copilot 侧边栏 — 需要管理员权限'
+    $prefsPath = Get-BrowserPrefsPath 'msedge'
+    if (-not (Test-Path $prefsPath)) {
+        Write-Status 'SKIP' 'Edge 隐藏 Copilot 侧边栏 — 未检测到安装'
         return
     }
-    $policyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
-    $current = Get-RegistryValue $policyPath 'HubsSidebarEnabled'
-    if ($current -eq 0) {
-        Write-Status 'SKIP' 'Edge 隐藏 Copilot 侧边栏'
-    } else {
-        $r = Set-RegistryValue $policyPath 'HubsSidebarEnabled' 0
-        if ($r -eq $true) { Write-Status 'OK' 'Edge 隐藏 Copilot 侧边栏（策略级，不随账号同步）' } else { Write-Status 'FAIL' "Edge 隐藏 Copilot 侧边栏 — $r" }
+    Stop-BrowserProcesses 'msedge' 'Edge'
+    try {
+        $prefs = Get-Content $prefsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($prefs.edge_sidebar.enabled -eq $false) {
+            Write-Status 'SKIP' 'Edge 隐藏 Copilot 侧边栏'
+            return
+        }
+        if (-not $prefs.edge_sidebar) { $prefs | Add-Member -NotePropertyName 'edge_sidebar' -NotePropertyValue ([PSCustomObject]@{}) }
+        $prefs.edge_sidebar | Add-Member -NotePropertyName 'enabled' -NotePropertyValue $false -Force
+        $prefs | ConvertTo-Json -Depth 100 | Set-Content $prefsPath -Encoding UTF8
+        Write-Status 'OK' 'Edge 隐藏 Copilot 侧边栏'
+    } catch {
+        Write-Status 'FAIL' "Edge 隐藏 Copilot 侧边栏 — $($_.Exception.Message)"
     }
 }
 
 function Invoke-BrowserAll {
+    $actions = @(
+        @{ Name = 'Chrome 开启开发者模式';              Fn = { Set-BrowserDeveloperMode 'chrome' 'Chrome' } },
+        @{ Name = 'Edge 开启开发者模式';                Fn = { Set-BrowserDeveloperMode 'msedge' 'Edge' } },
+        @{ Name = 'Edge 主页精简（关闭信息流/快速链接/小组件/必应热点）'; Fn = { Set-EdgeNewTabSimple } },
+        @{ Name = 'Edge 隐藏 Copilot 侧边栏';           Fn = { Disable-EdgeCopilotSidebar } }
+    )
+    $indices = Invoke-SelectMenu '浏览器配置' ($actions | ForEach-Object { $_.Name })
+    if ($null -eq $indices) { return }
+
+    Clear-Host
     Write-Host ""
     Write-Host "  浏览器配置" -ForegroundColor Cyan
     Write-Host "  ──────────────────────────────" -ForegroundColor DarkGray
-    Set-BrowserDeveloperMode 'chrome'  'Chrome'
-    Set-BrowserDeveloperMode 'msedge'  'Edge'
-    Set-EdgeNewTabSimple
-    Disable-EdgeCopilotSidebar
+    foreach ($i in $indices) {
+        & $actions[$i].Fn
+    }
     Write-Host ""
 }

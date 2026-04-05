@@ -33,13 +33,27 @@ function Add-ThisPCToDesktop {
 }
 
 function Invoke-TaskbarAll {
+    $actions = @(
+        @{ Name = '清空任务栏固定图标';    Fn = { Clear-TaskbarPinnedIcons } },
+        @{ Name = '关闭虚拟桌面切换按钮';  Fn = { Disable-TaskViewButton } },
+        @{ Name = '桌面添加"此电脑"图标';  Fn = { Add-ThisPCToDesktop } }
+    )
+    $indices = Invoke-SelectMenu '任务栏设置' ($actions | ForEach-Object { $_.Name })
+    if ($null -eq $indices) { return }
+
+    Clear-Host
     Write-Host ""
     Write-Host "  任务栏设置" -ForegroundColor Cyan
     Write-Host "  ──────────────────────────────" -ForegroundColor DarkGray
-    Clear-TaskbarPinnedIcons
-    Disable-TaskViewButton
-    Add-ThisPCToDesktop
+    $needRestart = $false
+    foreach ($i in $indices) {
+        & $actions[$i].Fn
+        $needRestart = $true
+    }
+    if ($needRestart -and $indices.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  正在重启资源管理器..." -ForegroundColor DarkGray
+        Restart-Explorer
+    }
     Write-Host ""
-    Write-Host "  正在重启资源管理器..." -ForegroundColor DarkGray
-    Restart-Explorer
 }

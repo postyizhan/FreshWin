@@ -12,12 +12,6 @@ function Write-Status {
     }
 }
 
-function Test-Admin {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]$identity
-    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-}
-
 function Set-RegistryValue {
     param(
         [string]$Path,
@@ -68,4 +62,55 @@ function Restart-Explorer {
     Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
     Start-Process explorer
+}
+
+# 交互式复选菜单
+# $Title   : 标题文字
+# $Items   : 字符串数组，每项的显示名称
+# 返回值   : 用户选中的索引数组（0-based），若取消则返回 $null
+function Invoke-SelectMenu {
+    param(
+        [string]$Title,
+        [string[]]$Items
+    )
+    $selected = @($Items | ForEach-Object { $true })  # 默认全选
+
+    while ($true) {
+        Clear-Host
+        Write-Host ""
+        Write-Host "  $Title" -ForegroundColor Cyan
+        Write-Host "  ──────────────────────────────" -ForegroundColor DarkGray
+        Write-Host ""
+        for ($i = 0; $i -lt $Items.Count; $i++) {
+            $mark = if ($selected[$i]) { "[✓]" } else { "[ ]" }
+            $color = if ($selected[$i]) { 'White' } else { 'DarkGray' }
+            Write-Host "  [$($i+1)] $mark $($Items[$i])" -ForegroundColor $color
+        }
+        Write-Host ""
+        Write-Host "  [A] 全选  [N] 全不选  [Enter] 执行选中项  [0] 取消" -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host -NoNewline "  > "
+        $input = Read-Host
+
+        switch ($input.Trim().ToUpper()) {
+            'A' { $selected = @($Items | ForEach-Object { $true }) }
+            'N' { $selected = @($Items | ForEach-Object { $false }) }
+            '0' { return $null }
+            ''  {
+                $indices = @()
+                for ($i = 0; $i -lt $Items.Count; $i++) {
+                    if ($selected[$i]) { $indices += $i }
+                }
+                return $indices
+            }
+            default {
+                if ($input -match '^\d+$') {
+                    $idx = [int]$input - 1
+                    if ($idx -ge 0 -and $idx -lt $Items.Count) {
+                        $selected[$idx] = -not $selected[$idx]
+                    }
+                }
+            }
+        }
+    }
 }

@@ -59,11 +59,20 @@ function Disable-CopilotStartup {
 }
 
 function Invoke-SoftwareAll {
+    $actions = @(
+        @{ Name = 'winget 换中国源 (USTC)'; Fn = { Set-WingetChinaSource } },
+        @{ Name = '删除 OneDrive';           Fn = { Remove-OneDrive } },
+        @{ Name = '禁用 Copilot 自启动';     Fn = { Disable-CopilotStartup } }
+    )
+    $indices = Invoke-SelectMenu '软件管理' ($actions | ForEach-Object { $_.Name })
+    if ($null -eq $indices) { return }
+
+    Clear-Host
     Write-Host ""
     Write-Host "  软件管理" -ForegroundColor Cyan
     Write-Host "  ──────────────────────────────" -ForegroundColor DarkGray
-    Set-WingetChinaSource
-    Remove-OneDrive
-    Disable-CopilotStartup
+    foreach ($i in $indices) {
+        & $actions[$i].Fn
+    }
     Write-Host ""
 }

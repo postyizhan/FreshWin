@@ -21,10 +21,6 @@ function Enable-HiddenFiles {
 }
 
 function Enable-WSL {
-    if (-not (Test-Admin)) {
-        Write-Status 'FAIL' '开启 WSL — 需要管理员权限'
-        return
-    }
     $feature = Get-WindowsOptionalFeature -Online -FeatureName 'Microsoft-Windows-Subsystem-Linux' -ErrorAction SilentlyContinue
     if ($feature -and $feature.State -eq 'Enabled') {
         Write-Status 'SKIP' '开启 WSL'
@@ -40,10 +36,6 @@ function Enable-WSL {
 }
 
 function Enable-HyperV {
-    if (-not (Test-Admin)) {
-        Write-Status 'FAIL' '开启 Hyper-V — 需要管理员权限'
-        return
-    }
     $feature = Get-WindowsOptionalFeature -Online -FeatureName 'Microsoft-Hyper-V' -ErrorAction SilentlyContinue
     if ($feature -and $feature.State -eq 'Enabled') {
         Write-Status 'SKIP' '开启 Hyper-V'
@@ -96,10 +88,6 @@ function Disable-MenuAnimation {
 }
 
 function Enable-LongPaths {
-    if (-not (Test-Admin)) {
-        Write-Status 'FAIL' '开启长路径支持 — 需要管理员权限'
-        return
-    }
     $current = Get-RegistryValue 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' 'LongPathsEnabled'
     if ($current -eq 1) {
         Write-Status 'SKIP' '开启长路径支持'
@@ -140,18 +128,27 @@ function Set-WindowsTerminalDefault {
 }
 
 function Invoke-SystemAll {
+    $actions = @(
+        @{ Name = '开启文件扩展名';                    Fn = { Enable-FileExtensions } },
+        @{ Name = '显示隐藏文件';                      Fn = { Enable-HiddenFiles } },
+        @{ Name = '开启 WSL';                          Fn = { Enable-WSL } },
+        @{ Name = '开启 Hyper-V';                      Fn = { Enable-HyperV } },
+        @{ Name = '设置12小时制时间格式';              Fn = { Set-TimeFormat12H } },
+        @{ Name = 'PowerShell 执行策略设为 RemoteSigned'; Fn = { Set-PSExecutionPolicy } },
+        @{ Name = '关闭右键菜单动画';                  Fn = { Disable-MenuAnimation } },
+        @{ Name = '开启长路径支持';                    Fn = { Enable-LongPaths } },
+        @{ Name = '关闭开始菜单推荐项目';              Fn = { Disable-StartMenuRecommendations } },
+        @{ Name = '配置 Windows Terminal 为默认终端';  Fn = { Set-WindowsTerminalDefault } }
+    )
+    $indices = Invoke-SelectMenu '系统功能' ($actions | ForEach-Object { $_.Name })
+    if ($null -eq $indices) { return }
+
+    Clear-Host
     Write-Host ""
     Write-Host "  系统功能" -ForegroundColor Cyan
     Write-Host "  ──────────────────────────────" -ForegroundColor DarkGray
-    Enable-FileExtensions
-    Enable-HiddenFiles
-    Enable-WSL
-    Enable-HyperV
-    Set-TimeFormat12H
-    Set-PSExecutionPolicy
-    Disable-MenuAnimation
-    Enable-LongPaths
-    Disable-StartMenuRecommendations
-    Set-WindowsTerminalDefault
+    foreach ($i in $indices) {
+        & $actions[$i].Fn
+    }
     Write-Host ""
 }
