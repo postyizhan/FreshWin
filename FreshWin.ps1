@@ -10,7 +10,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     exit
 }
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # 加载模块
@@ -63,8 +63,8 @@ function Invoke-All {
         @{ Name = '[软件] 删除 OneDrive';            Fn = { Remove-OneDrive };           Group = 'none' },
         @{ Name = '[软件] 禁用 Copilot 自启动';      Fn = { Disable-CopilotStartup };    Group = 'none' },
         # 系统
-        @{ Name = '[系统] 开启文件扩展名';                       Fn = { Enable-FileExtensions };             Group = 'none' },
-        @{ Name = '[系统] 显示隐藏文件';                         Fn = { Enable-HiddenFiles };                Group = 'none' },
+        @{ Name = '[系统] 开启文件扩展名';                       Fn = { Enable-FileExtensions };             Group = 'explorer' },
+        @{ Name = '[系统] 显示隐藏文件';                         Fn = { Enable-HiddenFiles };                Group = 'explorer' },
         @{ Name = '[系统] 开启 WSL';                             Fn = { Enable-WSL };                        Group = 'none' },
         @{ Name = '[系统] 开启 Hyper-V';                         Fn = { Enable-HyperV };                     Group = 'none' },
         @{ Name = '[系统] 设置12小时制时间格式';                 Fn = { Set-TimeFormat12H };                 Group = 'none' },
@@ -89,7 +89,7 @@ function Invoke-All {
     $needRestartExplorer = $false
     foreach ($i in $indices) {
         & $allActions[$i].Fn
-        if ($allActions[$i].Group -eq 'taskbar') { $needRestartExplorer = $true }
+        if ($allActions[$i].Group -in 'taskbar', 'explorer') { $needRestartExplorer = $true }
     }
     if ($needRestartExplorer) {
         Write-Host ""

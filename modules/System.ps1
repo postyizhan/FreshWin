@@ -51,30 +51,42 @@ function Enable-HyperV {
 }
 
 function Set-TimeFormat12H {
-    $current = Get-RegistryValue 'HKCU:\Control Panel\International' 'sTimeFormat'
-    $target = 'tt h:mm:ss'
-    if ($current -eq $target) {
-        Write-Status 'SKIP' '设置12小时制时间格式 (上午/下午 h:mm:ss)'
+    $longTarget  = 'tt h:mm:ss'
+    $shortTarget = 'tt h:mm'
+    $currentLong  = Get-RegistryValue 'HKCU:\Control Panel\International' 'sTimeFormat'
+    $currentShort = Get-RegistryValue 'HKCU:\Control Panel\International' 'sShortTime'
+    if ($currentLong -eq $longTarget -and $currentShort -eq $shortTarget) {
+        Write-Status 'SKIP' '设置12小时制时间格式'
     } else {
-        $r = Set-RegistryValue 'HKCU:\Control Panel\International' 'sTimeFormat' $target 'String'
-        if ($r -eq $true) { Write-Status 'OK' '设置12小时制时间格式 (上午/下午 h:mm:ss)' } else { Write-Status 'FAIL' "设置时间格式 — $r" }
+        $r1 = Set-RegistryValue 'HKCU:\Control Panel\International' 'sTimeFormat' $longTarget 'String'
+        $r2 = Set-RegistryValue 'HKCU:\Control Panel\International' 'sShortTime'  $shortTarget 'String'
+        if ($r1 -eq $true -and $r2 -eq $true) {
+            # 广播设置变更，任务栏时间立即刷新
+            if (-not ([System.Management.Automation.PSTypeName]'NativeMethods.WinAPI').Type) {
+                $code = @'
+[DllImport("user32.dll", SetLastError=true, CharSet=CharSet.Auto)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+'@
+                Add-Type -MemberDefinition $code -Name 'WinAPI' -Namespace 'NativeMethods' -ErrorAction SilentlyContinue
+            }
+            $result = [UIntPtr]::Zero
+            [NativeMethods.WinAPI]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, 'intl', 0, 1000, [ref]$result) | Out-Null
+            Write-Status 'OK' '设置12小时制时间格式'
+        } else {
+            Write-Status 'FAIL' "设置时间格式 — $r1 $r2"
+        }
     }
 }
 
 function Set-PSExecutionPolicy {
-    $effective = Get-ExecutionPolicy
-    $userScope  = Get-ExecutionPolicy -Scope CurrentUser
-    # 有效策略已经够用（Bypass/Unrestricted/RemoteSigned），无需修改
-    if ($effective -in 'Bypass', 'Unrestricted', 'RemoteSigned') {
-        Write-Status 'SKIP' "PowerShell 执行策略（当前有效: $effective）"
+    $userScope = Get-ExecutionPolicy -Scope CurrentUser
+    if ($userScope -in 'Bypass', 'Unrestricted', 'RemoteSigned') {
+        Write-Status 'SKIP' "PowerShell 执行策略（CurrentUser: $userScope）"
         return
     }
-    try {
-        Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction Stop
-        Write-Status 'OK' 'PowerShell 执行策略设为 RemoteSigned'
-    } catch {
-        Write-Status 'FAIL' "PowerShell 执行策略 — $($_.Exception.Message)"
-    }
+    # 直接写注册表，绕过组策略对 Set-ExecutionPolicy 的限制
+    $r = Set-RegistryValue 'HKCU:\Software\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell' 'ExecutionPolicy' 'RemoteSigned' 'String'
+    if ($r -eq $true) { Write-Status 'OK' 'PowerShell 执行策略设为 RemoteSigned' } else { Write-Status 'FAIL' "PowerShell 执行策略 — $r" }
 }
 
 function Disable-MenuAnimation {
@@ -129,16 +141,16 @@ function Set-WindowsTerminalDefault {
 
 function Invoke-SystemAll {
     $actions = @(
-        @{ Name = '开启文件扩展名';                    Fn = { Enable-FileExtensions } },
-        @{ Name = '显示隐藏文件';                      Fn = { Enable-HiddenFiles } },
-        @{ Name = '开启 WSL';                          Fn = { Enable-WSL } },
-        @{ Name = '开启 Hyper-V';                      Fn = { Enable-HyperV } },
-        @{ Name = '设置12小时制时间格式';              Fn = { Set-TimeFormat12H } },
-        @{ Name = 'PowerShell 执行策略设为 RemoteSigned'; Fn = { Set-PSExecutionPolicy } },
-        @{ Name = '关闭右键菜单动画';                  Fn = { Disable-MenuAnimation } },
-        @{ Name = '开启长路径支持';                    Fn = { Enable-LongPaths } },
-        @{ Name = '关闭开始菜单推荐项目';              Fn = { Disable-StartMenuRecommendations } },
-        @{ Name = '配置 Windows Terminal 为默认终端';  Fn = { Set-WindowsTerminalDefault } }
+        @{ Name = '开启文件扩展名';                    Fn = { Enable-FileExtensions };    Group = 'explorer' },
+        @{ Name = '显示隐藏文件';                      Fn = { Enable-HiddenFiles };        Group = 'explorer' },
+        @{ Name = '开启 WSL';                          Fn = { Enable-WSL };                Group = 'none' },
+        @{ Name = '开启 Hyper-V';                      Fn = { Enable-HyperV };             Group = 'none' },
+        @{ Name = '设置12小时制时间格式';              Fn = { Set-TimeFormat12H };          Group = 'none' },
+        @{ Name = 'PowerShell 执行策略设为 RemoteSigned'; Fn = { Set-PSExecutionPolicy };  Group = 'none' },
+        @{ Name = '关闭右键菜单动画';                  Fn = { Disable-MenuAnimation };     Group = 'none' },
+        @{ Name = '开启长路径支持';                    Fn = { Enable-LongPaths };          Group = 'none' },
+        @{ Name = '关闭开始菜单推荐项目';              Fn = { Disable-StartMenuRecommendations }; Group = 'none' },
+        @{ Name = '配置 Windows Terminal 为默认终端';  Fn = { Set-WindowsTerminalDefault }; Group = 'none' }
     )
     $indices = Invoke-SelectMenu '系统功能' ($actions | ForEach-Object { $_.Name })
     if ($null -eq $indices) { return }
@@ -147,8 +159,15 @@ function Invoke-SystemAll {
     Write-Host ""
     Write-Host "  系统功能" -ForegroundColor Cyan
     Write-Host "  ──────────────────────────────" -ForegroundColor DarkGray
+    $needRestartExplorer = $false
     foreach ($i in $indices) {
         & $actions[$i].Fn
+        if ($actions[$i].Group -eq 'explorer') { $needRestartExplorer = $true }
+    }
+    if ($needRestartExplorer) {
+        Write-Host ""
+        Write-Host "  正在重启资源管理器..." -ForegroundColor DarkGray
+        Restart-Explorer
     }
     Write-Host ""
 }
