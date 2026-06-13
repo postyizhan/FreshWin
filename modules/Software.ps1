@@ -1,14 +1,21 @@
 ﻿# Software.ps1 - 软件管理
 
 function Set-WingetChinaSource {
-    Write-Host "  正在切换 winget 源..." -ForegroundColor DarkGray
+    $sourceUrl = 'https://mirrors.ustc.edu.cn/winget-source'
     $result = Invoke-Cmd 'winget' @('source', 'list')
     if ($result.ExitCode -ne 0) {
-        Write-Status 'FAIL' 'winget 换中国源 — winget 未找到'
+        Write-Status 'FAIL' "winget 换中国源 — $($result.Output)"
         return
     }
+
+    if ($result.Output -like "*$sourceUrl*") {
+        Write-Status 'SKIP' 'winget 换中国源 (USTC)'
+        return
+    }
+
+    Write-Host "  正在切换 winget 源..." -ForegroundColor DarkGray
     Invoke-Cmd 'winget' @('source', 'remove', 'winget') | Out-Null
-    $r = Invoke-Cmd 'winget' @('source', 'add', 'winget', 'https://mirrors.ustc.edu.cn/winget-source', '--trust-level', 'trusted')
+    $r = Invoke-Cmd 'winget' @('source', 'add', 'winget', $sourceUrl, '--trust-level', 'trusted')
     if ($r.ExitCode -eq 0) {
         Write-Status 'OK' 'winget 换中国源 (USTC)'
     } else {
@@ -16,25 +23,47 @@ function Set-WingetChinaSource {
     }
 }
 
+function Test-OneDriveInstalled {
+    $paths = @(
+        "$env:LOCALAPPDATA\Microsoft\OneDrive\OneDrive.exe",
+        "$env:ProgramFiles\Microsoft OneDrive\OneDrive.exe",
+        "${env:ProgramFiles(x86)}\Microsoft OneDrive\OneDrive.exe",
+        "$env:SystemRoot\SysWOW64\OneDriveSetup.exe",
+        "$env:SystemRoot\System32\OneDriveSetup.exe"
+    )
+    return [bool]($paths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1)
+}
+
 function Remove-OneDrive {
+    if (-not (Test-OneDriveInstalled)) {
+        Write-Status 'SKIP' '删除 OneDrive — 未检测到安装'
+        return
+    }
+
     Write-Host "  正在卸载 OneDrive..." -ForegroundColor DarkGray
     # 先尝试终止进程
     Stop-Process -Name OneDrive -Force -ErrorAction SilentlyContinue
+
     $r = Invoke-Cmd 'winget' @('uninstall', '--id', 'Microsoft.OneDrive', '--silent', '--accept-source-agreements')
     if ($r.ExitCode -eq 0) {
         Write-Status 'OK' '删除 OneDrive'
-    } else {
-        # 尝试内置卸载程序
-        $uninstaller = "$env:SystemRoot\SysWOW64\OneDriveSetup.exe"
-        if (-not (Test-Path $uninstaller)) {
-            $uninstaller = "$env:SystemRoot\System32\OneDriveSetup.exe"
-        }
-        if (Test-Path $uninstaller) {
-            Start-Process $uninstaller '/uninstall' -Wait
+        return
+    }
+
+    # 尝试内置卸载程序
+    $uninstaller = "$env:SystemRoot\SysWOW64\OneDriveSetup.exe"
+    if (-not (Test-Path $uninstaller)) {
+        $uninstaller = "$env:SystemRoot\System32\OneDriveSetup.exe"
+    }
+    if (Test-Path $uninstaller) {
+        try {
+            Start-Process $uninstaller '/uninstall' -Wait -ErrorAction Stop
             Write-Status 'OK' '删除 OneDrive'
-        } else {
-            Write-Status 'SKIP' '删除 OneDrive — 未检测到安装'
+        } catch {
+            Write-Status 'FAIL' "删除 OneDrive — $($_.Exception.Message)"
         }
+    } else {
+        Write-Status 'FAIL' "删除 OneDrive — $($r.Output)"
     }
 }
 

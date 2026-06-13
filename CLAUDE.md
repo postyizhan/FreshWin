@@ -16,14 +16,14 @@ Run.bat
 PowerShell -ExecutionPolicy Bypass -File FreshWin.ps1
 ```
 
-部分功能需要管理员权限（右键 Run.bat → 以管理员身份运行）。
+FreshWin 会自动请求管理员权限：非管理员运行 `FreshWin.ps1` 时，会以管理员身份重启自身，以确保系统级设置可以执行。
 
 ## 架构
 
 入口：`FreshWin.ps1` — 加载所有模块，提供交互式菜单主循环。
 
 ```
-FreshWin.ps1          # 入口、菜单、Invoke-All
+FreshWin.ps1          # 入口、自动提权、菜单、Invoke-All
 utils/
   Common.ps1          # 公共工具函数（所有模块依赖）
 modules/

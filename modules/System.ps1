@@ -21,16 +21,25 @@ function Enable-HiddenFiles {
 }
 
 function Enable-WSL {
-    $feature = Get-WindowsOptionalFeature -Online -FeatureName 'Microsoft-Windows-Subsystem-Linux' -ErrorAction SilentlyContinue
-    if ($feature -and $feature.State -eq 'Enabled') {
+    $wslFeature = Get-WindowsOptionalFeature -Online -FeatureName 'Microsoft-Windows-Subsystem-Linux' -ErrorAction SilentlyContinue
+    $vmFeature  = Get-WindowsOptionalFeature -Online -FeatureName 'VirtualMachinePlatform' -ErrorAction SilentlyContinue
+    if ($wslFeature -and $wslFeature.State -eq 'Enabled' -and $vmFeature -and $vmFeature.State -eq 'Enabled') {
         Write-Status 'SKIP' '开启 WSL'
     } else {
         Write-Host "  正在开启 WSL..." -ForegroundColor DarkGray
-        $r = Invoke-Cmd 'dism' @('/online', '/enable-feature', '/featurename:Microsoft-Windows-Subsystem-Linux', '/all', '/norestart')
-        if ($r.ExitCode -eq 0 -or $r.ExitCode -eq 3010) {
-            Write-Status 'OK' '开启 WSL（需重启生效）'
+        $results = @()
+        if (-not ($wslFeature -and $wslFeature.State -eq 'Enabled')) {
+            $results += Invoke-Cmd 'dism' @('/online', '/enable-feature', '/featurename:Microsoft-Windows-Subsystem-Linux', '/all', '/norestart')
+        }
+        if (-not ($vmFeature -and $vmFeature.State -eq 'Enabled')) {
+            $results += Invoke-Cmd 'dism' @('/online', '/enable-feature', '/featurename:VirtualMachinePlatform', '/all', '/norestart')
+        }
+
+        $failed = $results | Where-Object { $_.ExitCode -notin 0, 3010 }
+        if (-not $failed) {
+            Write-Status 'OK' '开启 WSL/WSL2 组件（需重启生效）'
         } else {
-            Write-Status 'FAIL' "开启 WSL — 退出码 $($r.ExitCode)"
+            Write-Status 'FAIL' "开启 WSL — 退出码 $($failed[0].ExitCode) $($failed[0].Output)"
         }
     }
 }
@@ -119,6 +128,22 @@ function Disable-StartMenuRecommendations {
     }
 }
 
+function Disable-SmartAppControl {
+    $path = 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy'
+    $name = 'VerifiedAndReputablePolicyState'
+    $current = Get-RegistryValue $path $name
+    if ($current -eq 0) {
+        Write-Status 'SKIP' '关闭 Windows 智能应用控制'
+    } else {
+        $r = Set-RegistryValue $path $name 0
+        if ($r -eq $true) {
+            Write-Status 'OK' '关闭 Windows 智能应用控制（需重启生效，关闭后通常只能重置或重装系统才能重新开启）'
+        } else {
+            Write-Status 'FAIL' "关闭 Windows 智能应用控制 — $r"
+        }
+    }
+}
+
 function Set-WindowsTerminalDefault {
     $wtConsoleGuid = '{2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}'
     $wtTerminalGuid = '{E12CFF52-A866-4C77-9A90-F570A7AA2C6B}'
@@ -150,6 +175,7 @@ function Invoke-SystemAll {
         @{ Name = '关闭右键菜单动画';                  Fn = { Disable-MenuAnimation };     Group = 'none' },
         @{ Name = '开启长路径支持';                    Fn = { Enable-LongPaths };          Group = 'none' },
         @{ Name = '关闭开始菜单推荐项目';              Fn = { Disable-StartMenuRecommendations }; Group = 'none' },
+        @{ Name = '关闭 Windows 智能应用控制';          Fn = { Disable-SmartAppControl };     Group = 'none' },
         @{ Name = '配置 Windows Terminal 为默认终端';  Fn = { Set-WindowsTerminalDefault }; Group = 'none' }
     )
     $indices = Invoke-SelectMenu '系统功能' ($actions | ForEach-Object { $_.Name })

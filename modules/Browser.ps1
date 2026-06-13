@@ -19,6 +19,23 @@ function Stop-BrowserProcesses {
     }
 }
 
+function Backup-BrowserPrefs {
+    param([string]$PrefsPath)
+    $backupPath = "$PrefsPath.freshwin.bak"
+    if (-not (Test-Path $backupPath)) {
+        Copy-Item -Path $PrefsPath -Destination $backupPath -Force
+    }
+}
+
+function Save-BrowserPrefs {
+    param(
+        [object]$Prefs,
+        [string]$PrefsPath
+    )
+    Backup-BrowserPrefs $PrefsPath
+    $Prefs | ConvertTo-Json -Depth 100 | Set-Content $PrefsPath -Encoding UTF8
+}
+
 function Set-BrowserDeveloperMode {
     param([string]$Browser, [string]$DisplayName)
     $prefsPath = Get-BrowserPrefsPath $Browser
@@ -36,7 +53,7 @@ function Set-BrowserDeveloperMode {
         if (-not $prefs.extensions) { $prefs | Add-Member -NotePropertyName 'extensions' -NotePropertyValue ([PSCustomObject]@{}) }
         if (-not $prefs.extensions.ui) { $prefs.extensions | Add-Member -NotePropertyName 'ui' -NotePropertyValue ([PSCustomObject]@{}) }
         $prefs.extensions.ui | Add-Member -NotePropertyName 'developer_mode' -NotePropertyValue $true -Force
-        $prefs | ConvertTo-Json -Depth 100 | Set-Content $prefsPath -Encoding UTF8
+        Save-BrowserPrefs $prefs $prefsPath
         Write-Status 'OK' "$DisplayName 开启开发者模式"
     } catch {
         Write-Status 'FAIL' "$DisplayName 开启开发者模式 — $($_.Exception.Message)"
@@ -65,7 +82,7 @@ function Set-EdgeNewTabSimple {
         $prefs.ntp | Add-Member -NotePropertyName 'show_quick_links'      -NotePropertyValue $false -Force
         $prefs.ntp | Add-Member -NotePropertyName 'show_cards'            -NotePropertyValue $false -Force
         $prefs.ntp | Add-Member -NotePropertyName 'background_image_type' -NotePropertyValue 0      -Force  # 0=纯色, 1=自定义, 2=必应热点
-        $prefs | ConvertTo-Json -Depth 100 | Set-Content $prefsPath -Encoding UTF8
+        Save-BrowserPrefs $prefs $prefsPath
         Write-Status 'OK' 'Edge 主页精简（关闭信息流/快速链接/小组件/必应热点）'
     } catch {
         Write-Status 'FAIL' "Edge 主页精简 — $($_.Exception.Message)"
@@ -87,7 +104,7 @@ function Disable-EdgeCopilotSidebar {
         }
         if (-not $prefs.edge_sidebar) { $prefs | Add-Member -NotePropertyName 'edge_sidebar' -NotePropertyValue ([PSCustomObject]@{}) }
         $prefs.edge_sidebar | Add-Member -NotePropertyName 'enabled' -NotePropertyValue $false -Force
-        $prefs | ConvertTo-Json -Depth 100 | Set-Content $prefsPath -Encoding UTF8
+        Save-BrowserPrefs $prefs $prefsPath
         Write-Status 'OK' 'Edge 隐藏 Copilot 侧边栏'
     } catch {
         Write-Status 'FAIL' "Edge 隐藏 Copilot 侧边栏 — $($_.Exception.Message)"

@@ -72,6 +72,7 @@ function Invoke-All {
         @{ Name = '[系统] 关闭右键菜单动画';                     Fn = { Disable-MenuAnimation };             Group = 'none' },
         @{ Name = '[系统] 开启长路径支持';                       Fn = { Enable-LongPaths };                  Group = 'none' },
         @{ Name = '[系统] 关闭开始菜单推荐项目';                 Fn = { Disable-StartMenuRecommendations };  Group = 'none' },
+        @{ Name = '[系统] 关闭 Windows 智能应用控制';            Fn = { Disable-SmartAppControl };           Group = 'none' },
         @{ Name = '[系统] 配置 Windows Terminal 为默认终端';     Fn = { Set-WindowsTerminalDefault };        Group = 'none' },
         # 浏览器
         @{ Name = '[浏览器] Chrome 开启开发者模式';               Fn = { Set-BrowserDeveloperMode 'chrome' 'Chrome' }; Group = 'none' },

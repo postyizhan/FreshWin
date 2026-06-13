@@ -17,6 +17,7 @@ function Set-RegistryValue {
         [string]$Path,
         [string]$Name,
         [object]$Value,
+        [ValidateSet('String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord')]
         [string]$Type = 'DWord'
     )
     try {
@@ -52,10 +53,29 @@ function Get-RegistryValue {
     }
 }
 
+function Test-Admin {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]$identity
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Invoke-Cmd {
-    param([string]$Command, [string[]]$Arguments)
-    $result = & $Command @Arguments 2>&1
-    return @{ ExitCode = $LASTEXITCODE; Output = $result }
+    param(
+        [string]$Command,
+        [string[]]$Arguments = @()
+    )
+
+    if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) {
+        return @{ ExitCode = -1; Output = "命令未找到：$Command" }
+    }
+
+    try {
+        $result = & $Command @Arguments 2>&1
+        $output = ($result | Out-String).Trim()
+        return @{ ExitCode = $LASTEXITCODE; Output = $output }
+    } catch {
+        return @{ ExitCode = -1; Output = $_.Exception.Message }
+    }
 }
 
 function Restart-Explorer {
