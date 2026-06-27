@@ -118,6 +118,21 @@ function Enable-LongPaths {
     }
 }
 
+function Disable-FastStartup {
+    $path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power'
+    $current = Get-RegistryValue $path 'HiberbootEnabled'
+    if ($current -eq 0) {
+        Write-Status 'SKIP' '关闭快速启动'
+    } else {
+        $r = Set-RegistryValue $path 'HiberbootEnabled' 0
+        if ($r -eq $true) {
+            Write-Status 'OK' '关闭快速启动（双系统下 Linux 可正常挂载 NTFS 分区）'
+        } else {
+            Write-Status 'FAIL' "关闭快速启动 — $r"
+        }
+    }
+}
+
 function Disable-StartMenuRecommendations {
     $current = Get-RegistryValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'Start_IrisRecommendations'
     if ($current -eq 0) {
@@ -174,6 +189,7 @@ function Invoke-SystemAll {
         @{ Name = 'PowerShell 执行策略设为 RemoteSigned'; Fn = { Set-PSExecutionPolicy };  Group = 'none' },
         @{ Name = '关闭右键菜单动画';                  Fn = { Disable-MenuAnimation };     Group = 'none' },
         @{ Name = '开启长路径支持';                    Fn = { Enable-LongPaths };          Group = 'none' },
+        @{ Name = '关闭快速启动';                      Fn = { Disable-FastStartup };       Group = 'none' },
         @{ Name = '关闭开始菜单推荐项目';              Fn = { Disable-StartMenuRecommendations }; Group = 'none' },
         @{ Name = '关闭 Windows 智能应用控制';          Fn = { Disable-SmartAppControl };     Group = 'none' },
         @{ Name = '配置 Windows Terminal 为默认终端';  Fn = { Set-WindowsTerminalDefault }; Group = 'none' }
