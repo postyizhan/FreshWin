@@ -133,6 +133,21 @@ function Disable-FastStartup {
     }
 }
 
+function Set-HardwareClockUTC {
+    $path = 'HKLM:\System\CurrentControlSet\Control\TimeZoneInformation'
+    $current = Get-RegistryValue $path 'RealTimeIsUniversal'
+    if ($current -eq 1) {
+        Write-Status 'SKIP' '硬件时钟设为 UTC'
+    } else {
+        $r = Set-RegistryValue $path 'RealTimeIsUniversal' 1
+        if ($r -eq $true) {
+            Write-Status 'OK' '硬件时钟设为 UTC（双系统下与 Linux 时间一致）'
+        } else {
+            Write-Status 'FAIL' "硬件时钟设为 UTC — $r"
+        }
+    }
+}
+
 function Disable-StartMenuRecommendations {
     $current = Get-RegistryValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'Start_IrisRecommendations'
     if ($current -eq 0) {
@@ -190,6 +205,7 @@ function Invoke-SystemAll {
         @{ Name = '关闭右键菜单动画';                  Fn = { Disable-MenuAnimation };     Group = 'none' },
         @{ Name = '开启长路径支持';                    Fn = { Enable-LongPaths };          Group = 'none' },
         @{ Name = '关闭快速启动';                      Fn = { Disable-FastStartup };       Group = 'none' },
+        @{ Name = '硬件时钟设为 UTC';                  Fn = { Set-HardwareClockUTC };      Group = 'none' },
         @{ Name = '关闭开始菜单推荐项目';              Fn = { Disable-StartMenuRecommendations }; Group = 'none' },
         @{ Name = '关闭 Windows 智能应用控制';          Fn = { Disable-SmartAppControl };     Group = 'none' },
         @{ Name = '配置 Windows Terminal 为默认终端';  Fn = { Set-WindowsTerminalDefault }; Group = 'none' }
